@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Soda Can Knockdown: Night Market</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0a0a10; color: white; }
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            pointer-events: none;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.9);
+            z-index: 10;
+        }
+        #stats { font-size: 24px; font-weight: 700; color: #ffffff; display: flex; align-items: center; gap: 15px; }
+        #balls-left { color: #ffffff; background: rgba(0, 150, 255, 0.8); padding: 4px 12px; border-radius: 4px; border: 1px solid white; transition: transform 0.2s ease-out; display: inline-block; }
+        .bonus-pulse { transform: scale(1.4); background: #4caf50 !important; }
+        #instructions { font-size: 14px; opacity: 0.9; margin-top: 5px; color: #fff; font-weight: 500; }
+        
+        #combo-msg {
+            position: absolute;
+            top: 40%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0);
+            font-size: 80px;
+            font-weight: 900;
+            color: #ffeb3b;
+            text-shadow: 0 0 20px #ff4400;
+            z-index: 50;
+            pointer-events: none;
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            font-style: italic;
+        }
+        #combo-msg.show { transform: translate(-50%, -50%) scale(1); }
+
+        #overlay, #pause-menu, #tutorial-popup {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(8px);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            text-align: center;
+        }
+
+        /* Professional Tutorial Style */
+        #tutorial-popup { display: flex; }
+        #tutorial-card { 
+            background: linear-gradient(145deg, #161625, #0a0a12);
+            padding: 40px; 
+            border: 1px solid rgba(255, 68, 0, 0.3); 
+            border-radius: 24px; 
+            max-width: 440px;
+            width: 90%;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), 0 0 20px rgba(255, 68, 0, 0.1);
+            position: relative;
+            overflow: hidden;
+        }
+        #tutorial-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 4px;
+            background: linear-gradient(90deg, transparent, #ff4400, transparent);
+        }
+        #tutorial-card h2 { 
+            font-size: 32px; 
+            margin: 0 0 30px 0; 
+            color: #fff; 
+            letter-spacing: 3px; 
+            font-weight: 800;
+            text-transform: uppercase;
+        }
+        .tutorial-step { 
+            margin: 20px 0; 
+            padding: 15px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            text-align: left;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+        .icon-hint { 
+            font-size: 32px; 
+            margin-right: 20px;
+            min-width: 50px;
+            text-align: center;
+        }
+        .step-text { flex: 1; }
+        .step-text strong { display: block; color: #ff4400; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }
+        .step-text p { margin: 0; font-size: 16px; color: #ccc; line-height: 1.4; }
+
+        #jumpscare {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: black;
+            display: none;
+            z-index: 200;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+        #scare-face {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            filter: contrast(200%) brightness(60%) sepia(50%);
+        }
+        .glitch-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: repeating-linear-gradient(0deg, rgba(255,255,255,0.05) 0px, rgba(255,255,255,0.05) 1px, transparent 2px);
+            pointer-events: none;
+        }
+
+        .btn {
+            padding: 14px 40px;
+            font-size: 18px;
+            background: #ff4400;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-transform: uppercase;
+            font-weight: 700;
+            letter-spacing: 1px;
+            pointer-events: auto;
+            margin-top: 20px;
+            box-shadow: 0 4px 15px rgba(255, 68, 0, 0.3);
+        }
+        .btn:hover { background: #ff5511; transform: translateY(-2px); box-shadow: 0 6px 20px rgba(255, 68, 0, 0.4); }
+        .btn:active { transform: translateY(0); }
+        .btn.secondary { background: #333; box-shadow: none; color: #999; }
+        .btn.secondary:hover { background: #444; color: #fff; }
+        
+        #pause-trigger { 
+            position: absolute; 
+            top: 20px; 
+            right: 20px; 
+            z-index: 11; 
+            width: 50px; 
+            height: 50px; 
+            background: rgba(0,0,0,0.5); 
+            border: 1px solid rgba(255,255,255,0.2); 
+            border-radius: 50%; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            cursor: pointer; 
+            pointer-events: auto; 
+            font-size: 20px;
+            transition: all 0.2s;
+        }
+        #pause-trigger:hover { background: #ff4400; border-color: #ff4400; }
+
+        canvas { display: block; touch-action: none; }
+
+        .menu-box {
+            background: rgba(15, 15, 25, 0.95);
+            padding: 50px;
+            border-radius: 20px;
+            border: 1px solid rgba(255,255,255,0.1);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        /* Star Rating Styles */
+        #star-rating {
+            font-size: 48px;
+            margin-bottom: 20px;
+            color: #ffeb3b;
+            text-shadow: 0 0 10px rgba(255, 235, 59, 0.5);
+        }
+        #star-rating span { margin: 0 5px; }
+        #star-rating .star-off { color: #444; text-shadow: none; }
+    </style>
+</head>
+<body>
+
+<div id="ui">
+    <div id="stats">
+        <span>LEVEL <span id="level-num">1</span></span>
+        <span>CANS: <span id="score">0</span> / <span id="target">3</span></span>
+        <span id="balls-left">BALLS: 6</span>
+    </div>
+    <div id="instructions">Flick UP fast to aim and throw! (P to Pause)</div>
+</div>
+
+<div id="combo-msg">COMBO!</div>
+
+<div id="pause-trigger" onclick="window.togglePause()">⏸</div>
+
+<div id="tutorial-popup">
+    <div id="tutorial-card">
+        <h2>Night Market</h2>
+        <div class="tutorial-step">
+            <span class="icon-hint">🎯</span>
+            <div class="step-text">
+                <strong>The Objective</strong>
+                <p>Knock down all soda cans to clear the level.</p>
+            </div>
+        </div>
+        <div class="tutorial-step">
+            <span class="icon-hint">👆</span>
+            <div class="step-text">
+                <strong>Controls</strong>
+                <p>Drag to aim, then flick UP quickly to launch the ball.</p>
+            </div>
+        </div>
+        <div class="tutorial-step">
+            <span class="icon-hint">🔥</span>
+            <div class="step-text">
+                <strong>Skill Bonus</strong>
+                <p>Clear 3+ cans with one ball to earn +2 extra balls.</p>
+            </div>
+        </div>
+        <button class="btn" onclick="window.closeTutorial()">Start Game</button>
+    </div>
+</div>
+
+<div id="jumpscare">
+    <div class="glitch-overlay"></div>
+    <svg id="scare-face" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice">
+        <rect width="100" height="100" fill="black"/>
+        <circle cx="50" cy="50" r="40" fill="#eee" opacity="0.2" />
+        <ellipse cx="35" cy="40" rx="8" ry="12" fill="white" />
+        <ellipse cx="65" cy="40" rx="8" ry="12" fill="white" />
+        <circle cx="35" cy="40" r="3" fill="black" />
+        <circle cx="65" cy="40" r="3" fill="black" />
+        <ellipse cx="50" cy="70" rx="10" ry="15" fill="black" />
+    </svg>
+</div>
+
+<div id="pause-menu">
+    <div class="menu-box">
+        <h2>PAUSED</h2>
+        <button class="btn" onclick="window.togglePause()">Resume Game</button>
+        <button class="btn secondary" onclick="window.restartLevel()">Restart Level</button>
+    </div>
+</div>
+
+<div id="overlay">
+    <div class="menu-box">
+        <h2 id="msg-title">LEVEL CLEAR!</h2>
+        <div id="star-rating"></div>
+        <p id="msg-desc">Great job!</p>
+        <div id="action-buttons">
+            <button id="next-btn" class="btn" onclick="window.nextLevel()">Next Level</button>
+            <button id="retry-btn" class="btn" style="display:none" onclick="window.resetToLevelOne()">Restart Level 1</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- Configuration ---
+    const CAN_RADIUS = 0.32;
+    const CAN_HEIGHT = 0.95;
+    const BALL_RADIUS = 0.40; 
+    const TABLE_HEIGHT = 1.6;
+    const FRONT_TABLE_HEIGHT = 1.4;
+    const TABLE_THICKNESS = 0.6;
+    const CAN_MASS = 1.5; 
+    const BALL_MASS = 80; 
+    let baseBalls = 6;
+    
+    // --- State ---
+    let world, scene, camera, renderer;
+    let physicsCans = [], visualCans = [], physicsBall, visualBall;
+    let score = 0, currentLevel = 1, ballsRemaining = baseBalls, targetScore = 3;
+    let isDragging = false, dragStart = new THREE.Vector2(), dragStartTime = 0, currentMousePos = new THREE.Vector2();
+    let ballReady = true;
+    let shakeTimer = 0;
+    let lanterns = [];
+    let backgroundAssets = [];
+    let isGameOver = false;
+    let isPaused = false;
+    let tutorialShown = false;
+    let levelWon = false;
+
+    // Combo Tracking
+    let currentBallKnockdowns = 0;
+    let comboActive = false;
+
+    // Audio State
+    let audioCtx = null;
+    let isMuted = false;
+
+    // Trail Effect
+    let trailPoints = [];
+    const MAX_TRAIL_POINTS = 20;
+    let trailMesh;
+
+    // Themes
+    const themes = [
+        { sky: 0x11111a, ground: 0x1a1a1a, light: 0xccccff, accent: 0xff4400, lantern: 0xff5500 },
+        { sky: 0x1a0a1a, ground: 0x110811, light: 0xffaaff, accent: 0xff00ff, lantern: 0xff00cc },
+        { sky: 0x0a1a0a, ground: 0x081108, light: 0xaaffaa, accent: 0x00ff88, lantern: 0x00ffaa },
+        { sky: 0x1a1005, ground: 0x110a05, light: 0xffccaa, accent: 0xff9900, lantern: 0xff7700 }
+    ];
+
+    const canMaterial = new CANNON.Material("canMaterial");
+    const ballMaterial = new CANNON.Material("ballMaterial");
+    const groundMaterial = new CANNON.Material("groundMaterial");
+
+    let floorBodies = [];
+    let tableBodies = [];
+
+    init();
+
+    function init() {
+        world = new CANNON.World();
+        world.gravity.set(0, -35, 0); 
+        world.solver.iterations = 50; 
+
+        const canToGround = new CANNON.ContactMaterial(canMaterial, groundMaterial, { friction: 0.6, restitution: 0.1 });
+        const ballToCan = new CANNON.ContactMaterial(ballMaterial, canMaterial, { friction: 0.4, restitution: 0.2 });
+        const canToCan = new CANNON.ContactMaterial(canMaterial, canMaterial, { friction: 0.5, restitution: 0.1 });
+        
+        world.addContactMaterial(canToGround);
+        world.addContactMaterial(ballToCan);
+        world.addContactMaterial(canToCan);
+
+        scene = new THREE.Scene();
+        
+        camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 5, 18);
+        camera.lookAt(0, 3, 0);
+
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild(renderer.domElement);
+
+        createTrail();
+        
+        if (localStorage.getItem('sodaKnockdownTutorialSeen')) {
+            tutorialShown = true;
+            document.getElementById('tutorial-popup').style.display = 'none';
+        }
+
+        loadLevel(currentLevel);
+
+        window.addEventListener('resize', onResize);
+        window.addEventListener('mousedown', onMouseDown);
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseup', onMouseUp);
+        window.addEventListener('touchstart', (e) => { onMouseDown(e.touches[0]); onMouseMove(e.touches[0]); }, { passive: false });
+        window.addEventListener('touchmove', (e) => { onMouseMove(e.touches[0]); }, { passive: false });
+        window.addEventListener('touchend', (e) => onMouseUp(e.changedTouches[0]), { passive: false });
+        window.addEventListener('keydown', (e) => {
+            if (e.key.toLowerCase() === 'p') togglePause();
+        });
+
+        animate();
+    }
+
+    function initAudio() {
+        if (audioCtx) return;
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+
+    window.closeTutorial = function() {
+        tutorialShown = true;
+        localStorage.setItem('sodaKnockdownTutorialSeen', 'true');
+        document.getElementById('tutorial-popup').style.display = 'none';
+        initAudio();
+    };
+
+    window.togglePause = function() {
+        if (isGameOver || levelWon || !tutorialShown) return;
+        isPaused = !isPaused;
+        document.getElementById('pause-menu').style.display = isPaused ? 'flex' : 'none';
+        if (audioCtx) {
+            if (isPaused) audioCtx.suspend();
+            else audioCtx.resume();
+        }
+    };
+
+    window.restartLevel = function() {
+        if (currentLevel > 1 && currentLevel <= 10) baseBalls -= 2; 
+        loadLevel(currentLevel);
+    };
+
+    window.nextLevel = function() { 
+        currentLevel++; 
+        loadLevel(currentLevel); 
+    };
+
+    window.resetToLevelOne = function() {
+        currentLevel = 1;
+        baseBalls = 6;
+        loadLevel(1);
+    };
+
+    function createTrail() {
+        const geometry = new THREE.BufferGeometry();
+        const material = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6 });
+        trailMesh = new THREE.Line(geometry, material);
+        trailMesh.frustumCulled = false;
+        scene.add(trailMesh);
+    }
+
+    function updateTrail() {
+        if (!physicsBall || ballReady) {
+            trailMesh.visible = false;
+            trailPoints = [];
+            return;
+        }
+        trailMesh.visible = true;
+        trailPoints.push(new THREE.Vector3(physicsBall.position.x, physicsBall.position.y, physicsBall.position.z));
+        if (trailPoints.length > MAX_TRAIL_POINTS) trailPoints.shift();
+        
+        const vertices = [];
+        for (let p of trailPoints) {
+            vertices.push(p.x, p.y, p.z);
+        }
+        trailMesh.geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+        trailMesh.geometry.attributes.position.needsUpdate = true;
+    }
+
+    function playScream() {
+        if (!audioCtx) return;
+        for (let i = 0; i < 5; i++) {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = i % 2 === 0 ? 'sawtooth' : 'square';
+            osc.frequency.setValueAtTime(200 + Math.random() * 800, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(50 + Math.random() * 20, audioCtx.currentTime + 1.2);
+            gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.2);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 1.2);
+        }
+    }
+
+    function triggerJumpscare() {
+        const jumpscareEl = document.getElementById('jumpscare');
+        jumpscareEl.style.display = 'flex';
+        playScream(); 
+        let intensity = 40; 
+        const interval = setInterval(() => {
+            jumpscareEl.style.transform = `translate(${(Math.random()-0.5)*intensity}px, ${(Math.random()-0.5)*intensity}px) scale(${1 + Math.random()*0.3})`;
+        }, 20);
+        setTimeout(() => {
+            clearInterval(interval);
+            jumpscareEl.style.display = 'none';
+            showOverlay("GAME OVER", "You lost. Progress reset to Level 1.", true);
+        }, 1300);
+    }
+
+    function createMarketStalls(theme) {
+        backgroundAssets.forEach(a => scene.remove(a));
+        backgroundAssets = [];
+        const createStall = (x, z, color) => {
+            const stall = new THREE.Group();
+            const base = new THREE.Mesh(new THREE.BoxGeometry(6, 4, 4), new THREE.MeshStandardMaterial({ color: 0x111111 }));
+            stall.add(base);
+            const roof = new THREE.Mesh(new THREE.BoxGeometry(7, 0.5, 5), new THREE.MeshStandardMaterial({ color: color }));
+            roof.position.y = 2.5;
+            stall.add(roof);
+            const person = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 1.5, 8), new THREE.MeshStandardMaterial({color: 0x000000}));
+            person.position.set(1.5, 0.75, 0.5);
+            stall.add(person);
+            stall.position.set(x, 2, z);
+            scene.add(stall);
+            backgroundAssets.push(stall);
+        };
+        createStall(-15, -5, theme.accent);
+        createStall(15, -8, theme.light);
+        createStall(-20, 12, theme.accent);
+        createStall(20, 10, theme.light);
+    }
+
+    function createLanterns(theme) {
+        lanterns.forEach(l => scene.remove(l.group));
+        lanterns = [];
+        const createLantern = (x, y, z, isCylinder = false) => {
+            const group = new THREE.Group();
+            const wire = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 10, 8), new THREE.MeshBasicMaterial({color: 0x111111}));
+            wire.position.y = 5;
+            group.add(wire);
+            let body;
+            if (isCylinder) {
+                body = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 1.2, 16), new THREE.MeshStandardMaterial({ color: theme.lantern, emissive: theme.lantern, emissiveIntensity: 1.2 }));
+                const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.1, 16), new THREE.MeshStandardMaterial({color: 0x221100}));
+                cap.position.y = 0.6;
+                body.add(cap);
+                const bottomCap = cap.clone();
+                bottomCap.position.y = -0.6;
+                body.add(bottomCap);
+                const tassel = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.1, 0.4, 8), new THREE.MeshStandardMaterial({color: 0xffcc00}));
+                tassel.position.y = -0.8;
+                body.add(tassel);
+            } else {
+                body = new THREE.Mesh(new THREE.SphereGeometry(0.7, 16, 16), new THREE.MeshStandardMaterial({ color: theme.lantern, emissive: theme.lantern, emissiveIntensity: 1 }));
+                body.scale.set(1, 1.1, 1);
+                const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.1, 16), new THREE.MeshStandardMaterial({color: 0x221100}));
+                cap.position.y = 0.7;
+                body.add(cap);
+                const bottomCap = cap.clone();
+                bottomCap.position.y = -0.7;
+                body.add(bottomCap);
+            }
+            group.add(body);
+            const light = new THREE.PointLight(theme.lantern, 1.5, 15);
+            light.position.y = 0;
+            group.add(light);
+            group.position.set(x, y, z);
+            scene.add(group);
+            lanterns.push({ group, body, baseRotation: Math.random() * Math.PI * 2, offset: Math.random() * 10 });
+        };
+        createLantern(-8, 8, -3);
+        createLantern(8, 8, -3, true);
+        createLantern(-4, 9, -10, true);
+        createLantern(4, 9, -10);
+        createLantern(-18, 10, -5, true);
+        createLantern(18, 10, -5);
+        createLantern(-12, 11, 8);
+        createLantern(12, 11, 8, true);
+        createLantern(-22, 9, 2);
+        createLantern(22, 9, 2);
+    }
+
+    function generateCanTexture() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 128; canvas.height = 128;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#e51a21'; 
+        ctx.fillRect(0,0,128,128);
+        ctx.fillStyle = '#cccccc';
+        ctx.fillRect(0, 0, 128, 8);
+        ctx.fillRect(0, 120, 128, 8);
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.moveTo(0, 80);
+        ctx.bezierCurveTo(40, 60, 80, 100, 128, 80);
+        ctx.lineTo(128, 128);
+        ctx.lineTo(0, 128);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 28px "Arial Black", Gadget, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.save();
+        ctx.translate(64, 55);
+        ctx.rotate(-0.1);
+        ctx.fillText("SODA", 0, 0);
+        ctx.restore();
+        ctx.fillStyle = '#e51a21';
+        ctx.font = 'italic bold 10px Arial';
+        ctx.fillText("CLASSIC", 85, 105);
+        return new THREE.CanvasTexture(canvas);
+    }
+
+    function createEnvironment(theme) {
+        scene.children.slice().forEach(child => {
+            if (child.isFloor || child.isTable || child.isLight) scene.remove(child);
+        });
+        floorBodies.forEach(b => world.remove(b));
+        tableBodies.forEach(b => world.remove(b));
+        floorBodies = [];
+        tableBodies = [];
+
+        scene.background = new THREE.Color(theme.sky);
+        scene.fog = new THREE.Fog(theme.sky, 20, 80);
+        
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(300, 300), new THREE.MeshStandardMaterial({ color: theme.ground, roughness: 0.8 }));
+        floor.rotation.x = -Math.PI / 2;
+        floor.receiveShadow = true;
+        floor.isFloor = true;
+        scene.add(floor);
+        
+        const floorBody = new CANNON.Body({ mass: 0, material: groundMaterial });
+        floorBody.addShape(new CANNON.Plane());
+        floorBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
+        world.addBody(floorBody);
+        floorBodies.push(floorBody);
+
+        const tableMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.4 });
+        const backTable = new THREE.Mesh(new THREE.BoxGeometry(10, TABLE_THICKNESS, 4), tableMat);
+        backTable.position.set(0, TABLE_HEIGHT, -2);
+        backTable.castShadow = true;
+        backTable.receiveShadow = true;
+        backTable.isTable = true;
+        scene.add(backTable);
+        const backTableBody = new CANNON.Body({ mass: 0, material: groundMaterial });
+        backTableBody.addShape(new CANNON.Box(new CANNON.Vec3(5, TABLE_THICKNESS/2, 2)));
+        backTableBody.position.set(0, TABLE_HEIGHT, -2);
+        world.addBody(backTableBody);
+        tableBodies.push(backTableBody);
+
+        const frontTable = new THREE.Mesh(new THREE.BoxGeometry(6, TABLE_THICKNESS, 3), tableMat);
+        frontTable.position.set(0, FRONT_TABLE_HEIGHT, 11);
+        frontTable.castShadow = true;
+        frontTable.receiveShadow = true;
+        frontTable.isTable = true;
+        scene.add(frontTable);
+        const frontTableBody = new CANNON.Body({ mass: 0, material: groundMaterial });
+        frontTableBody.addShape(new CANNON.Box(new CANNON.Vec3(3, TABLE_THICKNESS/2, 1.5)));
+        frontTableBody.position.set(0, FRONT_TABLE_HEIGHT, 11);
+        world.addBody(frontTableBody);
+        tableBodies.push(frontTableBody);
+
+        const ambient = new THREE.AmbientLight(0xffffff, 0.2);
+        ambient.isLight = true;
+        scene.add(ambient);
+        const moonLight = new THREE.DirectionalLight(theme.light, 0.4);
+        moonLight.position.set(-20, 30, 10);
+        moonLight.castShadow = true;
+        moonLight.isLight = true;
+        scene.add(moonLight);
+        const tableSpot = new THREE.PointLight(0xffffff, 0.8, 30);
+        tableSpot.position.set(0, 6, 4);
+        tableSpot.isLight = true;
+        scene.add(tableSpot);
+    }
+
+    function loadLevel(num) {
+        isGameOver = false;
+        isPaused = false;
+        levelWon = false;
+        document.getElementById('overlay').style.display = 'none';
+        document.getElementById('pause-menu').style.display = 'none';
+        visualCans.forEach(c => scene.remove(c));
+        physicsCans.forEach(b => world.remove(b.body));
+        physicsCans = []; visualCans = [];
+        if (visualBall) scene.remove(visualBall);
+        if (physicsBall) world.remove(physicsBall);
+        if (num === 1) baseBalls = 6;
+        else if (num <= 10) baseBalls += 2;
+        ballsRemaining = baseBalls;
+        score = 0;
+        const currentTheme = themes[(num - 1) % themes.length];
+        createEnvironment(currentTheme);
+        createMarketStalls(currentTheme);
+        createLanterns(currentTheme);
+        const tableTop = TABLE_HEIGHT + (TABLE_THICKNESS / 2);
+        const baseY = tableTop + (CAN_HEIGHT / 2);
+        const hGap = CAN_RADIUS * 2.1; 
+        const vGap = CAN_HEIGHT;
+        const pyramidRows = 2 + Math.floor(num / 2); 
+        let totalCansInPyramid = 0;
+        for (let row = 0; row < pyramidRows; row++) {
+            const cansInThisRow = pyramidRows - row;
+            const yPos = baseY + (row * vGap);
+            const rowOffset = ((cansInThisRow - 1) * hGap) / 2;
+            for (let i = 0; i < cansInThisRow; i++) {
+                const xPos = (i * hGap) - rowOffset;
+                createCan(xPos, yPos, -2);
+                totalCansInPyramid++;
+            }
+        }
+        targetScore = totalCansInPyramid;
+        document.getElementById('level-num').innerText = num;
+        document.getElementById('target').innerText = targetScore;
+        updateUI();
+        createBall();
+    }
+
+    function createCan(x, y, z) {
+        const body = new CANNON.Body({ mass: CAN_MASS, material: canMaterial, type: CANNON.Body.KINEMATIC });
+        body.addShape(new CANNON.Cylinder(CAN_RADIUS, CAN_RADIUS, CAN_HEIGHT, 16));
+        body.position.set(x, y, z);
+        body.allowSleep = true;
+        body.sleepSpeedLimit = 0.1;
+        body.addEventListener("collide", (e) => {
+            if (e.body === physicsBall || e.body.type === CANNON.Body.DYNAMIC) {
+                wakeAllCans();
+                playImpactSound(); 
+                if (e.body === physicsBall) shakeTimer = 10;
+            }
+        });
+        world.addBody(body);
+        const mesh = new THREE.Mesh(new THREE.CylinderGeometry(CAN_RADIUS, CAN_RADIUS, CAN_HEIGHT, 16), new THREE.MeshStandardMaterial({ map: generateCanTexture() }));
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        scene.add(mesh);
+        physicsCans.push({ body, isCounted: false, isDisappearing: false, timeOnFloor: 0 });
+        visualCans.push(mesh);
+    }
+
+    function playImpactSound() {
+        if (!audioCtx || isMuted) return;
+        const osc = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        osc.frequency.setValueAtTime(300 + Math.random() * 200, audioCtx.currentTime);
+        g.gain.setValueAtTime(0.08, audioCtx.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+        osc.connect(g);
+        g.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.15);
+    }
+
+    function createBall() {
+        if (visualBall) scene.remove(visualBall);
+        if (physicsBall) world.remove(physicsBall);
+        const ballY = FRONT_TABLE_HEIGHT + (TABLE_THICKNESS / 2) + BALL_RADIUS;
+        physicsBall = new CANNON.Body({ mass: BALL_MASS, material: ballMaterial });
+        physicsBall.addShape(new CANNON.Sphere(BALL_RADIUS));
+        physicsBall.position.set(0, ballY, 11);
+        physicsBall.linearDamping = 0.1; 
+        world.addBody(physicsBall);
+        visualBall = new THREE.Mesh(new THREE.SphereGeometry(BALL_RADIUS, 16, 16), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.1 }));
+        visualBall.castShadow = true;
+        scene.add(visualBall);
+        ballReady = true;
+        trailPoints = [];
+        currentBallKnockdowns = 0; 
+    }
+
+    function wakeAllCans() {
+        physicsCans.forEach(canObj => {
+            canObj.body.type = CANNON.Body.DYNAMIC;
+            canObj.body.wakeUp();
+        });
+    }
+
+    function onMouseDown(e) { 
+        if (ballReady && !isGameOver && !levelWon && !isPaused && tutorialShown) { 
+            if(!audioCtx) initAudio(); 
+            isDragging = true; 
+            dragStart.set(e.clientX, e.clientY); 
+            currentMousePos.set(e.clientX, e.clientY);
+            dragStartTime = Date.now(); 
+        } 
+    }
+    
+    function onMouseMove(e) {
+        if (isDragging) {
+            currentMousePos.set(e.clientX, e.clientY);
+        }
+    }
+
+    function onMouseUp(e) {
+        if (!isDragging) return;
+        isDragging = false;
+        
+        const duration = Math.max(Date.now() - dragStartTime, 50); 
+        const dragY = dragStart.y - e.clientY;
+        const dragX = e.clientX - dragStart.x;
+        
+        if (dragY < 20 || duration > 1000) return; 
+
+        const flickSpeed = dragY / duration;
+        const velocityZ = -Math.min(flickSpeed * 65, 140); 
+        const velocityX = (dragX / window.innerWidth) * 120;
+        const velocityY = Math.min(flickSpeed * 10, 25);
+
+        if (physicsBall) {
+            physicsBall.velocity.set(velocityX, velocityY, velocityZ);
+            ballReady = false;
+            ballsRemaining--;
+            updateUI();
+            
+            setTimeout(() => { 
+                if (currentBallKnockdowns >= 3) triggerCombo();
+                setTimeout(() => {
+                    if (!levelWon && ballsRemaining > 0) createBall(); 
+                    else checkGameOver(); 
+                }, 500);
+            }, 2000);
+        }
+    }
+
+    function triggerCombo() {
+        ballsRemaining += 2;
+        updateUI();
+        const msg = document.getElementById('combo-msg');
+        msg.classList.add('show');
+        const ballsUI = document.getElementById('balls-left');
+        ballsUI.classList.add('bonus-pulse');
+        if(audioCtx) {
+            const osc = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            osc.frequency.setValueAtTime(440, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.3);
+            g.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+            osc.connect(g);
+            g.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.4);
+        }
+        setTimeout(() => {
+            msg.classList.remove('show');
+            ballsUI.classList.remove('bonus-pulse');
+        }, 1200);
+    }
+
+    function checkGameOver() {
+        if (ballsRemaining <= 0 && !levelWon && score < targetScore) {
+            isGameOver = true;
+            triggerJumpscare();
+        }
+    }
+
+    function showOverlay(title, desc, isFail = false, stars = 0) {
+        document.getElementById('msg-title').innerText = title;
+        document.getElementById('msg-desc').innerText = desc;
+        const starBox = document.getElementById('star-rating');
+        starBox.innerHTML = '';
+        if (stars > 0) {
+            for (let i = 1; i <= 3; i++) {
+                const span = document.createElement('span');
+                span.innerText = '★';
+                if (i > stars) span.className = 'star-off';
+                starBox.appendChild(span);
+            }
+        }
+        document.getElementById('next-btn').style.display = isFail ? 'none' : 'inline-block';
+        document.getElementById('retry-btn').style.display = isFail ? 'inline-block' : 'none';
+        document.getElementById('overlay').style.display = 'flex';
+    }
+    
+    function updateUI() {
+        document.getElementById('score').innerText = score;
+        document.getElementById('balls-left').innerText = `BALLS: ${ballsRemaining}`;
+    }
+
+    function onResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+        if (isPaused || !tutorialShown) return;
+        world.step(1/60);
+        const time = Date.now() * 0.001;
+        updateTrail();
+        
+        lanterns.forEach(l => { 
+            l.group.rotation.z = Math.sin(time + l.baseRotation) * 0.05; 
+            l.group.rotation.x = Math.cos(time * 0.8 + l.baseRotation) * 0.03; 
+            const pulse = 1.0 + Math.sin(time * 2 + l.offset) * 0.2;
+            l.body.material.emissiveIntensity = pulse;
+        });
+
+        if (visualBall && physicsBall) { 
+            visualBall.position.copy(physicsBall.position); 
+            visualBall.quaternion.copy(physicsBall.quaternion); 
+        }
+
+        if (shakeTimer > 0) { 
+            camera.position.x += (Math.random()-0.5)*0.1; 
+            shakeTimer--; 
+            if(shakeTimer==0) camera.position.set(0,5,18); 
+        }
+
+        const floorThreshold = TABLE_HEIGHT + (TABLE_THICKNESS / 2) - 0.2; 
+        for (let i = physicsCans.length - 1; i >= 0; i--) {
+            const canObj = physicsCans[i];
+            const mesh = visualCans[i];
+            if (canObj.isDisappearing) {
+                mesh.scale.multiplyScalar(0.9);
+                if (mesh.scale.x < 0.01) {
+                    scene.remove(mesh);
+                    world.remove(canObj.body);
+                    physicsCans.splice(i, 1);
+                    visualCans.splice(i, 1);
+                }
+                continue;
+            }
+            mesh.position.copy(canObj.body.position);
+            mesh.quaternion.copy(canObj.body.quaternion);
+            if (canObj.body.type === CANNON.Body.DYNAMIC && canObj.body.position.y < floorThreshold) {
+                if (!canObj.isCounted) {
+                    canObj.isCounted = true;
+                    score++;
+                    currentBallKnockdowns++; 
+                    updateUI();
+                    if (score >= targetScore && !levelWon && !isGameOver) {
+                        levelWon = true;
+                        const used = baseBalls - ballsRemaining;
+                        // Traditional star rating logic based on efficiency
+                        let stars = 1;
+                        if (used <= 2) stars = 3;
+                        else if (used <= 4) stars = 2;
+                        
+                        setTimeout(() => showOverlay("LEVEL CLEAR!", "Great job!", false, stars), 500);
+                    }
+                }
+                canObj.timeOnFloor += 1/60;
+                if (canObj.timeOnFloor > 1.5) canObj.isDisappearing = true;
+            }
+        }
+        renderer.render(scene, camera);
+    }
+</script>
+</body>
+</html>
