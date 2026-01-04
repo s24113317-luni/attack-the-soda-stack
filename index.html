@@ -584,6 +584,62 @@
         createLantern(22, 9, 2);
     }
 
+    function createBunting(theme) {
+        // create balanced triangular pennants on the left and right edges only
+        const group = new THREE.Group();
+        const colors = [ new THREE.Color(theme.accent).getHex(), new THREE.Color(theme.light).getHex(), 0xffdd33 ];
+        const sideRanges = [[-22, -6], [6, 22]]; // left and right ranges to avoid center lanterns
+        const stringCount = 3;
+        const pennantsPerString = 9;
+
+        sideRanges.forEach((range, sideIdx) => {
+            const [startX, endX] = range;
+            for (let s = 0; s < stringCount; s++) {
+                const baseY = 9 + s * 0.6;
+                const z = -7 - sideIdx * 1.2 - s * 0.2;
+
+                const stringPoints = [];
+                for (let i = 0; i <= pennantsPerString; i++) {
+                    const u = i / pennantsPerString;
+                    const x = startX + (endX - startX) * u;
+                    const sag = Math.sin(u * Math.PI) * (0.8 + s * 0.2);
+                    const y = baseY - sag;
+                    stringPoints.push(new THREE.Vector3(x, y + 0.04, z));
+                }
+                const stringGeom = new THREE.BufferGeometry().setFromPoints(stringPoints);
+                const stringMat = new THREE.LineBasicMaterial({ color: 0x222222, linewidth: 1, transparent: true, opacity: 0.6 });
+                const stringLine = new THREE.Line(stringGeom, stringMat);
+                group.add(stringLine);
+
+                for (let i = 0; i < pennantsPerString; i++) {
+                    const u = i / (pennantsPerString - 1);
+                    const x = startX + (endX - startX) * u;
+                    const sag = Math.sin(u * Math.PI) * (0.8 + s * 0.2);
+                    const y = baseY - sag - 0.06;
+                    const w = 0.9; const h = 0.6;
+                    const geom = new THREE.BufferGeometry();
+                    const vertices = new Float32Array([
+                        -w/2, 0, 0,
+                        w/2, 0, 0,
+                        0, h, 0
+                    ]);
+                    geom.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+                    geom.computeVertexNormals();
+                    const color = colors[(i + s + sideIdx) % colors.length];
+                    const mat = new THREE.MeshStandardMaterial({ color: color, side: THREE.DoubleSide, roughness: 0.6, metalness: 0.02 });
+                    const pennant = new THREE.Mesh(geom, mat);
+                    pennant.position.set(x, y, z - 0.01);
+                    pennant.rotation.z = (Math.sin((i + s + sideIdx) * 0.6) * 0.12) * (sideIdx === 0 ? -1 : 1);
+                    pennant.castShadow = false;
+                    group.add(pennant);
+                }
+            }
+        });
+
+        scene.add(group);
+        backgroundAssets.push(group);
+    }
+
     function generateCanTexture() {
         const canvas = document.createElement('canvas');
         canvas.width = 128; canvas.height = 128;
@@ -696,6 +752,7 @@
         createEnvironment(currentTheme);
         createMarketStalls(currentTheme);
         createLanterns(currentTheme);
+        createBunting(currentTheme);
         const tableTop = TABLE_HEIGHT + (TABLE_THICKNESS / 2);
         const baseY = tableTop + (CAN_HEIGHT / 2);
         const hGap = CAN_RADIUS * 2.1; 
