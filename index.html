@@ -640,6 +640,56 @@
         backgroundAssets.push(group);
     }
 
+    function createCenterStreetLights(theme) {
+        // Place two street lanterns on the ground behind the play area (not on the tables),
+        // and ensure they're rendered after lanterns so they remain visible.
+        const group = new THREE.Group();
+        const xs = [-4, 4];
+        const poleHeight = 6.0;
+        // place behind the front table, but in the background area
+        const z = -4.0;
+
+        xs.forEach((x, idx) => {
+            const lampGroup = new THREE.Group();
+            lampGroup.position.set(x, 0, z);
+
+            const pole = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.06, 0.06, poleHeight, 8),
+                new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.6 })
+            );
+            pole.position.set(0, poleHeight / 2 + 0.05, 0);
+            pole.castShadow = true;
+            lampGroup.add(pole);
+
+            const arm = new THREE.Mesh(
+                new THREE.BoxGeometry(0.5, 0.06, 0.06),
+                new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.5 })
+            );
+            arm.position.set(idx === 0 ? -0.25 : 0.25, poleHeight / 2 - 0.25, 0);
+            arm.rotation.z = idx === 0 ? 0.18 : -0.18;
+            lampGroup.add(arm);
+
+            const head = new THREE.Mesh(
+                new THREE.SphereGeometry(0.32, 12, 12),
+                new THREE.MeshStandardMaterial({ color: theme.lantern, emissive: theme.lantern, emissiveIntensity: 1.6, roughness: 0.2 })
+            );
+            head.position.set(idx === 0 ? -0.55 : 0.55, poleHeight / 2 - 0.25, 0);
+            lampGroup.add(head);
+
+            const pl = new THREE.PointLight(theme.lantern, 1.6, 18, 2);
+            pl.position.set(head.position.x, head.position.y, head.position.z - 0.05);
+            lampGroup.add(pl);
+
+            // ensure lampGroup renders after lanterns so it's not occluded visually
+            lampGroup.renderOrder = 1000;
+
+            group.add(lampGroup);
+        });
+
+        scene.add(group);
+        backgroundAssets.push(group);
+    }
+
     function generateCanTexture() {
         const canvas = document.createElement('canvas');
         canvas.width = 128; canvas.height = 128;
@@ -752,6 +802,7 @@
         createEnvironment(currentTheme);
         createMarketStalls(currentTheme);
         createLanterns(currentTheme);
+        createCenterStreetLights(currentTheme);
         createBunting(currentTheme);
         const tableTop = TABLE_HEIGHT + (TABLE_THICKNESS / 2);
         const baseY = tableTop + (CAN_HEIGHT / 2);
