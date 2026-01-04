@@ -292,6 +292,8 @@
     <div class="menu-box" style="max-width:640px; width:90%; display:flex; flex-direction:column;">
         <h2>Shop</h2>
         <div id="shop-list" style="display:flex; gap:12px; flex-wrap:wrap; justify-content:center; margin-top:12px;"></div>
+        <h3 style="margin:24px 0 8px 0; color:#ffd700;">Skill Market</h3>
+        <div id="skill-list" style="display:flex; gap:12px; flex-wrap:wrap; justify-content:center; margin-bottom:8px;"></div>
         <div style="display:flex; gap:12px; justify-content:center; margin-top:18px;">
             <button class="btn secondary" onclick="closeShop()">Close</button>
         </div>
@@ -338,9 +340,21 @@
     const MAX_TRAIL_POINTS = 20;
     let trailMesh;
 
-    // Points / Coins / Skins
+    // Points / Coins / Skins / Skills
     let points = 0;
     let coins = parseInt(localStorage.getItem('sodaCoins') || '0', 10) || 0;
+    // 技能資料
+    const skills = [
+        { id: 'bomb', name: 'Bomb Ball', desc: 'Ball explodes on hit, damaging nearby cans.', cost: 10, icon: '💣' },
+        { id: 'arrow', name: 'Arrow Ball', desc: 'Arrow follows and hits another can after first hit.', cost: 12, icon: '🏹' },
+        { id: 'freeze', name: 'Freeze Can', desc: 'Hit can becomes frozen; next hit shatters for bonus points.', cost: 14, icon: '❄️' }
+    ];
+    let ownedSkills = JSON.parse(localStorage.getItem('sodaOwnedSkills') || '[]');
+    if (!ownedSkills || !Array.isArray(ownedSkills)) {
+        ownedSkills = [];
+        localStorage.setItem('sodaOwnedSkills', JSON.stringify(ownedSkills));
+    }
+    let selectedSkill = localStorage.getItem('sodaSelectedSkill') || null;
     // 新增棒球皮膚，並將所有球設計加上圖案
     const skins = [
         { id: 'white', name: 'Default', cost: 0, color: 0xffffff, design: 'baseball' },
@@ -520,7 +534,65 @@
 
     function openShop() {
         renderShopList();
+        renderSkillList();
         document.getElementById('shop-modal').style.display = 'flex';
+    }
+    // 技能商店渲染
+    function renderSkillList() {
+        const container = document.getElementById('skill-list');
+        container.innerHTML = '';
+        skills.forEach(s => {
+            const card = document.createElement('div');
+            card.style.width = '160px';
+            card.style.background = 'rgba(0,0,0,0.15)';
+            card.style.padding = '10px';
+            card.style.borderRadius = '10px';
+            card.style.textAlign = 'center';
+            card.style.border = selectedSkill === s.id ? '2px solid #ffd700' : '1px solid #333';
+            const icon = document.createElement('div');
+            icon.style.fontSize = '2.2em';
+            icon.innerText = s.icon;
+            const title = document.createElement('div');
+            title.innerText = s.name;
+            title.style.fontWeight = 'bold';
+            const desc = document.createElement('div');
+            desc.innerText = s.desc;
+            desc.style.fontSize = '0.95em';
+            desc.style.margin = '6px 0 8px 0';
+            const cost = document.createElement('div');
+            cost.innerText = s.cost + ' coins';
+            cost.style.color = '#ffd700';
+            cost.style.fontWeight = 'bold';
+            const btn = document.createElement('button');
+            btn.className = 'btn';
+            btn.style.marginTop = '8px';
+            if (ownedSkills.includes(s.id)) {
+                btn.innerText = selectedSkill === s.id ? 'Equipped' : 'Equip';
+                btn.onclick = () => { selectedSkill = s.id; localStorage.setItem('sodaSelectedSkill', selectedSkill); renderSkillList(); };
+            } else {
+                btn.innerText = 'Buy';
+                btn.onclick = () => {
+                    if (coins >= s.cost) {
+                        coins -= s.cost;
+                        ownedSkills.push(s.id);
+                        localStorage.setItem('sodaCoins', String(coins));
+                        localStorage.setItem('sodaOwnedSkills', JSON.stringify(ownedSkills));
+                        selectedSkill = s.id;
+                        localStorage.setItem('sodaSelectedSkill', selectedSkill);
+                        renderSkillList();
+                        updateUI();
+                    } else {
+                        alert('Not enough coins');
+                    }
+                };
+            }
+            card.appendChild(icon);
+            card.appendChild(title);
+            card.appendChild(desc);
+            card.appendChild(cost);
+            card.appendChild(btn);
+            container.appendChild(card);
+        });
     }
 
     function closeShop() {
