@@ -251,6 +251,13 @@
                 <p>Clear 3+ cans with one ball to earn +2 extra balls.</p>
             </div>
         </div>
+        <div class="tutorial-step">
+            <span class="icon-hint">🛒</span>
+            <div class="step-text">
+                <strong>Market</strong>
+                <p>Click the <b>cart</b> 🛒 at the top right to buy new ball skins and powerful skills in the shop!</p>
+            </div>
+        </div>
         <button class="btn" onclick="window.closeTutorial()">Start Game</button>
     </div>
 </div>
@@ -289,11 +296,12 @@
 </div>
 
 <div id="shop-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; z-index:150; justify-content:center; align-items:center;">
-    <div class="menu-box" style="max-width:640px; width:90%; display:flex; flex-direction:column;">
+    <div class="menu-box" style="max-width:640px; width:90%; display:flex; flex-direction:column; max-height:90vh; overflow-y:auto;">
         <h2>Shop</h2>
         <div id="shop-list" style="display:flex; gap:12px; flex-wrap:wrap; justify-content:center; margin-top:12px;"></div>
         <h3 style="margin:24px 0 8px 0; color:#ffd700;">Skill Market</h3>
-        <div id="skill-list" style="display:flex; gap:12px; flex-wrap:wrap; justify-content:center; margin-bottom:8px;"></div>
+        <div id="skill-list" style="display:flex; gap:12px; flex-wrap:wrap; justify-content:center; margin-bottom:8px; width:100%; max-width:100vw;"></div>
+
         <div style="display:flex; gap:12px; justify-content:center; margin-top:18px;">
             <button class="btn secondary" onclick="closeShop()">Close</button>
         </div>
@@ -346,8 +354,8 @@
     // 技能資料
     const skills = [
         { id: 'bomb', name: 'Bomb Ball', desc: 'Ball explodes on hit, damaging nearby cans.', cost: 10, icon: '💣' },
-        { id: 'arrow', name: 'Arrow Ball', desc: 'Arrow follows and hits another can after first hit.', cost: 12, icon: '🏹' },
-        { id: 'freeze', name: 'Freeze Can', desc: 'Hit can becomes frozen; next hit shatters for bonus points.', cost: 14, icon: '❄️' }
+        { id: 'arrow', name: 'Arrow Ball', desc: 'Arrow follows and hits another can after first hit.', cost: 10, icon: '🏹' },
+        { id: 'freeze', name: 'Freeze Can', desc: 'Hit can becomes frozen; next hit shatters for bonus points.', cost: 10, icon: '❄️' }
     ];
     let ownedSkills = JSON.parse(localStorage.getItem('sodaOwnedSkills') || '[]');
     if (!ownedSkills || !Array.isArray(ownedSkills)) {
@@ -362,8 +370,7 @@
         { id: 'neon', name: 'Neon', cost: 12, color: 0x44ffcc, design: 'star' },
         { id: 'metal', name: 'Steel', cost: 20, color: 0x9999aa, design: 'none' },
         { id: 'smile', name: 'Smile', cost: 8, color: 0xfff700, design: 'smile' },
-        { id: 'lightning', name: 'Lightning', cost: 10, color: 0x00e0ff, design: 'lightning' },
-        { id: 'heart', name: 'Heart', cost: 7, color: 0xff4f7a, design: 'heart' }
+        { id: 'lightning', name: 'Lightning', cost: 10, color: 0x00e0ff, design: 'lightning' }
     ];
     let ownedSkins = JSON.parse(localStorage.getItem('sodaOwnedSkins') || '[]');
     if (!ownedSkins || !Array.isArray(ownedSkins) || ownedSkins.length === 0) {
@@ -684,18 +691,6 @@
                 ctx.beginPath();
                 ctx.moveTo(24,24); ctx.lineTo(36,32); ctx.lineTo(30,32); ctx.lineTo(40,44);
                 ctx.stroke();
-            } else if(s.design === 'heart') {
-                ctx.fillStyle = '#fff';
-                ctx.beginPath();
-                ctx.moveTo(32,38);
-                ctx.bezierCurveTo(32,34,24,34,24,38);
-                ctx.bezierCurveTo(24,44,32,48,32,54);
-                ctx.bezierCurveTo(32,48,40,44,40,38);
-                ctx.bezierCurveTo(40,34,32,34,32,38);
-                ctx.closePath();
-                ctx.globalAlpha = 0.18;
-                ctx.fill();
-                ctx.globalAlpha = 1;
             }
             const title = document.createElement('div');
             title.innerText = s.name;
@@ -714,12 +709,14 @@
                     if (coins >= s.cost) {
                         coins -= s.cost;
                         ownedSkins.push(s.id);
+                        selectedSkin = s.id;
                         localStorage.setItem('sodaCoins', String(coins));
                         localStorage.setItem('sodaOwnedSkins', JSON.stringify(ownedSkins));
-                        selectedSkin = s.id;
                         localStorage.setItem('sodaSelectedSkin', selectedSkin);
                         renderShopList();
                         updateUI();
+                        // 立即切換球外觀
+                        if (typeof createBall === 'function') createBall();
                     } else {
                         alert('Not enough coins');
                     }
