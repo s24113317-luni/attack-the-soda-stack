@@ -470,6 +470,59 @@
         }
     }
 
+    function startFlickerThenJumpscare() {
+        if (window._flickerActive) return;
+        window._flickerActive = true;
+        initAudio();
+
+        const targets = [];
+        stallLightGroups.forEach(stall => {
+            if (!stall.lightBulbs) return;
+            stall.lightBulbs.forEach(b => {
+                if (b.light) targets.push({ light: b.light, orig: b.light.intensity || 1 });
+            });
+        });
+
+        lanterns.forEach(l => {
+            const pl = l.group.children.find(ch => ch.isPointLight);
+            if (pl) targets.push({ light: pl, orig: pl.intensity || 1 });
+        });
+
+        // include ambient and directional lights for a broader flicker
+        scene.children.forEach(c => {
+            if ((c.isAmbientLight || c.isDirectionalLight) && typeof c.intensity === 'number') {
+                targets.push({ light: c, orig: c.intensity });
+            }
+        });
+
+        const duration = 1200;
+        const intervalMs = 80;
+        const steps = Math.max(1, Math.floor(duration / intervalMs));
+        let step = 0;
+        const bodyOrigBg = document.body.style.backgroundColor;
+
+        const interval = setInterval(() => {
+            step++;
+            const blackout = Math.random() < 0.18 + (step / steps) * 0.3;
+            targets.forEach(t => {
+                if (blackout) t.light.intensity = 0;
+                else t.light.intensity = Math.max(0, t.orig * (0.2 + Math.random() * 1.6));
+            });
+
+            if (Math.random() < 0.08) {
+                document.body.style.backgroundColor = '#ffffff';
+                setTimeout(() => { document.body.style.backgroundColor = bodyOrigBg; }, 60);
+            }
+
+            if (step >= steps) {
+                clearInterval(interval);
+                targets.forEach(t => { t.light.intensity = t.orig; });
+                window._flickerActive = false;
+                setTimeout(() => triggerJumpscare(), 300);
+            }
+        }, intervalMs);
+    }
+
     function triggerJumpscare() {
         const jumpscareEl = document.getElementById('jumpscare');
         jumpscareEl.style.display = 'flex';
@@ -960,8 +1013,9 @@
 
     function checkGameOver() {
         if (ballsRemaining <= 0 && !levelWon && score < targetScore) {
+            if (isGameOver) return;
             isGameOver = true;
-            triggerJumpscare();
+            startFlickerThenJumpscare();
         }
     }
 
