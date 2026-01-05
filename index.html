@@ -182,15 +182,40 @@
         }
         #star-rating span { margin: 0 5px; }
         #star-rating .star-off { color: #444; text-shadow: none; }
+        /* Big centered night market title (external, glowing red) */
+        #market-title {
+            position: fixed;
+            left: 50%;
+            top: 30%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 60;
+            font-size: 64px;
+            font-weight: 900;
+            color: #ffb3b3;
+            text-align: center;
+            letter-spacing: 6px;
+            text-transform: uppercase;
+            text-shadow:
+                0 0 6px rgba(255,120,120,0.9),
+                0 0 18px rgba(255,80,80,0.85),
+                0 0 36px rgba(255,40,40,0.7),
+                0 6px 28px rgba(0,0,0,0.6);
+        }
+        @media (max-width: 800px) { #market-title { font-size: 36px; letter-spacing: 3px; top: 35%; } }
     </style>
 </head>
 <body>
+
+<div id="market-title" aria-hidden="true">ATTACK THE STACK</div>
+
 
 <div id="ui">
     <div id="stats">
         <span>LEVEL <span id="level-num">1</span></span>
         <span>CANS: <span id="score">0</span> / <span id="target">3</span></span>
         <span id="balls-left">BALLS: 6</span>
+        <span id="coins-left">COINS: 0</span>
     </div>
     <div id="instructions">Flick UP fast to aim and throw! (P to Pause)</div>
 </div>
@@ -198,6 +223,9 @@
 <div id="combo-msg">COMBO!</div>
 
 <div id="pause-trigger" onclick="window.togglePause()">⏸</div>
+<div id="shop-trigger" onclick="openShop()" style="position:absolute; top:20px; right:80px; z-index:11; width:50px; height:50px; background:rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.2); border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer; pointer-events:auto; font-size:18px;">
+    🛒
+</div>
 
 <div id="tutorial-popup">
     <div id="tutorial-card">
@@ -221,6 +249,13 @@
             <div class="step-text">
                 <strong>Skill Bonus</strong>
                 <p>Clear 3+ cans with one ball to earn +2 extra balls.</p>
+            </div>
+        </div>
+        <div class="tutorial-step">
+            <span class="icon-hint">🛒</span>
+            <div class="step-text">
+                <strong>Market</strong>
+                <p>Click the <b>cart</b> 🛒 at the top right to buy new ball skins and powerful skills in the shop!</p>
             </div>
         </div>
         <button class="btn" onclick="window.closeTutorial()">Start Game</button>
@@ -260,6 +295,18 @@
     </div>
 </div>
 
+<div id="shop-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; z-index:150; justify-content:center; align-items:center;">
+    <div class="menu-box" style="max-width:640px; width:90%; display:flex; flex-direction:column; max-height:90vh; overflow-y:auto;">
+        <h2>Shop</h2>
+        <div id="shop-list" style="display:flex; gap:12px; flex-wrap:wrap; justify-content:center; margin-top:12px;"></div>
+        <!-- Skill Market removed, ball shop remains -->
+
+        <div style="display:flex; gap:12px; justify-content:center; margin-top:18px;">
+            <button class="btn secondary" onclick="closeShop()">Close</button>
+        </div>
+    </div>
+</div>
+
 <script>
     // --- Configuration ---
     const CAN_RADIUS = 0.32;
@@ -281,6 +328,7 @@
     let shakeTimer = 0;
     let lanterns = [];
     let backgroundAssets = [];
+    let stallLightGroups = [];
     let isGameOver = false;
     let isPaused = false;
     let tutorialShown = false;
@@ -298,6 +346,37 @@
     let trailPoints = [];
     const MAX_TRAIL_POINTS = 20;
     let trailMesh;
+
+    // Points / Coins / Skins / Skills
+    let points = 0;
+    let coins = parseInt(localStorage.getItem('sodaCoins') || '0', 10) || 0;
+    // 技能資料
+    const skills = [
+        { id: 'bomb', name: 'Bomb Ball', desc: 'Ball explodes on hit, damaging nearby cans.', cost: 10, icon: '💣' },
+        { id: 'arrow', name: 'Arrow Ball', desc: 'Arrow follows and hits another can after first hit.', cost: 10, icon: '🏹' },
+        { id: 'freeze', name: 'Freeze Can', desc: 'Hit can becomes frozen; next hit shatters for bonus points.', cost: 10, icon: '❄️' }
+    ];
+    let ownedSkills = JSON.parse(localStorage.getItem('sodaOwnedSkills') || '[]');
+    if (!ownedSkills || !Array.isArray(ownedSkills)) {
+        ownedSkills = [];
+        localStorage.setItem('sodaOwnedSkills', JSON.stringify(ownedSkills));
+    }
+    let selectedSkill = localStorage.getItem('sodaSelectedSkill') || null;
+    // 新增棒球皮膚，並將所有球設計加上圖案
+    const skins = [
+        { id: 'white', name: 'Default', cost: 0, color: 0xffffff, design: 'baseball' },
+        { id: 'red', name: 'Crimson', cost: 5, color: 0xff4444, design: 'stripe' },
+        { id: 'neon', name: 'Neon', cost: 12, color: 0x44ffcc, design: 'star' },
+        { id: 'metal', name: 'Steel', cost: 20, color: 0x9999aa, design: 'none' },
+        { id: 'smile', name: 'Smile', cost: 8, color: 0xfff700, design: 'smile' },
+        { id: 'lightning', name: 'Lightning', cost: 10, color: 0x00e0ff, design: 'lightning' }
+    ];
+    let ownedSkins = JSON.parse(localStorage.getItem('sodaOwnedSkins') || '[]');
+    if (!ownedSkins || !Array.isArray(ownedSkins) || ownedSkins.length === 0) {
+        ownedSkins = ['white'];
+        localStorage.setItem('sodaOwnedSkins', JSON.stringify(ownedSkins));
+    }
+    let selectedSkin = localStorage.getItem('sodaSelectedSkin') || 'white';
 
     // Themes
     const themes = [
@@ -342,11 +421,12 @@
         document.body.appendChild(renderer.domElement);
 
         createTrail();
+        updateUI();
         
-        if (localStorage.getItem('sodaKnockdownTutorialSeen')) {
-            tutorialShown = true;
-            document.getElementById('tutorial-popup').style.display = 'none';
-        }
+        // Always show the tutorial popup on load so the player sees instructions.
+        // Keep tutorialShown false until the player closes it.
+        tutorialShown = false;
+        document.getElementById('tutorial-popup').style.display = 'flex';
 
         loadLevel(currentLevel);
 
@@ -445,6 +525,262 @@
         }
     }
 
+    function addPoints(n) {
+        points += n;
+        // Earn 1 coin per 3 points (simple conversion) and store coins immediately
+        const newCoins = Math.floor(points / 3) - Math.floor((points - n) / 3);
+        if (newCoins > 0) addCoins(newCoins);
+    }
+
+    function addCoins(n) {
+        coins += n;
+        localStorage.setItem('sodaCoins', String(coins));
+        updateUI();
+    }
+
+    function openShop() {
+        renderShopList();
+        document.getElementById('shop-modal').style.display = 'flex';
+    }
+    // 技能商店渲染
+    function renderSkillList() {
+        const container = document.getElementById('skill-list');
+        container.innerHTML = '';
+        skills.forEach(s => {
+            const card = document.createElement('div');
+            card.style.width = '160px';
+            card.style.background = 'rgba(0,0,0,0.15)';
+            card.style.padding = '10px';
+            card.style.borderRadius = '10px';
+            card.style.textAlign = 'center';
+            card.style.border = selectedSkill === s.id ? '2px solid #ffd700' : '1px solid #333';
+            const icon = document.createElement('div');
+            icon.style.fontSize = '2.2em';
+            icon.innerText = s.icon;
+            const title = document.createElement('div');
+            title.innerText = s.name;
+            title.style.fontWeight = 'bold';
+            const desc = document.createElement('div');
+            desc.innerText = s.desc;
+            desc.style.fontSize = '0.95em';
+            desc.style.margin = '6px 0 8px 0';
+            const cost = document.createElement('div');
+            cost.innerText = s.cost + ' coins';
+            cost.style.color = '#ffd700';
+            cost.style.fontWeight = 'bold';
+            const btn = document.createElement('button');
+            btn.className = 'btn';
+            btn.style.marginTop = '8px';
+            if (ownedSkills.includes(s.id)) {
+                btn.innerText = selectedSkill === s.id ? 'Equipped' : 'Equip';
+                btn.onclick = () => { selectedSkill = s.id; localStorage.setItem('sodaSelectedSkill', selectedSkill); renderSkillList(); };
+            } else {
+                btn.innerText = 'Buy';
+                btn.onclick = () => {
+                    if (coins >= s.cost) {
+                        coins -= s.cost;
+                        ownedSkills.push(s.id);
+                        localStorage.setItem('sodaCoins', String(coins));
+                        localStorage.setItem('sodaOwnedSkills', JSON.stringify(ownedSkills));
+                        selectedSkill = s.id;
+                        localStorage.setItem('sodaSelectedSkill', selectedSkill);
+                        renderSkillList();
+                        updateUI();
+                    } else {
+                        alert('Not enough coins');
+                    }
+                };
+            }
+            card.appendChild(icon);
+            card.appendChild(title);
+            card.appendChild(desc);
+            card.appendChild(cost);
+            card.appendChild(btn);
+            container.appendChild(card);
+        });
+    }
+
+    function closeShop() {
+        document.getElementById('shop-modal').style.display = 'none';
+    }
+
+    function renderShopList() {
+        const container = document.getElementById('shop-list');
+        container.innerHTML = '';
+        skins.forEach(s => {
+            const card = document.createElement('div');
+            card.style.width = '140px';
+            card.style.background = 'rgba(0,0,0,0.12)';
+            card.style.padding = '12px';
+            card.style.borderRadius = '10px';
+            card.style.textAlign = 'center';
+            // 預覽球設計
+            const preview = document.createElement('canvas');
+            preview.width = 64;
+            preview.height = 64;
+            preview.style.width = '64px';
+            preview.style.height = '64px';
+            preview.style.margin = '0 auto 8px';
+            preview.style.borderRadius = '50%';
+            const ctx = preview.getContext('2d');
+            ctx.clearRect(0,0,64,64);
+            ctx.beginPath();
+            ctx.arc(32,32,30,0,2*Math.PI);
+            ctx.fillStyle = '#' + s.color.toString(16).padStart(6, '0');
+            ctx.fill();
+            // 棒球縫線
+            if(s.design === 'baseball') {
+                ctx.strokeStyle = '#d32f2f';
+                ctx.lineWidth = 2;
+                for(let i=0;i<2;i++){
+                    ctx.beginPath();
+                    ctx.ellipse(32,32,24,28, i*Math.PI, 0, Math.PI);
+                    ctx.stroke();
+                    for(let j=0;j<7;j++){
+                        let t = Math.PI*j/6;
+                        let x = 32 + (i===0?1:-1)*24*Math.cos(t);
+                        let y = 32 - 28*Math.sin(t);
+                        ctx.save();
+                        ctx.translate(x,y);
+                        ctx.rotate((i===0?1:-1)*Math.PI/6);
+                        ctx.beginPath();
+                        ctx.moveTo(-2,0);ctx.lineTo(2,0);
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+                }
+            } else if(s.design === 'stripe') {
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(32,32,18,Math.PI/4,Math.PI*1.25);
+                ctx.stroke();
+            } else if(s.design === 'star') {
+                ctx.fillStyle = '#fff';
+                for(let i=0;i<5;i++){
+                    ctx.save();
+                    ctx.translate(32,32);
+                    ctx.rotate(i*2*Math.PI/5);
+                    ctx.beginPath();
+                    ctx.moveTo(0,-14);
+                    for(let j=0;j<5;j++){
+                        ctx.lineTo(14*Math.sin((j*2+1)*Math.PI/5),-14*Math.cos((j*2+1)*Math.PI/5));
+                    }
+                    ctx.closePath();
+                    ctx.globalAlpha = 0.18;
+                    ctx.fill();
+                    ctx.globalAlpha = 1;
+                    ctx.restore();
+                }
+            } else if(s.design === 'smile') {
+                ctx.strokeStyle = '#222';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(32,38,10,Math.PI*0.15,Math.PI*0.85);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(27,28,2,0,2*Math.PI);
+                ctx.arc(37,28,2,0,2*Math.PI);
+                ctx.fillStyle = '#222';
+                ctx.fill();
+            } else if(s.design === 'lightning') {
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(24,24); ctx.lineTo(36,32); ctx.lineTo(30,32); ctx.lineTo(40,44);
+                ctx.stroke();
+            }
+            const title = document.createElement('div');
+            title.innerText = s.name;
+            const cost = document.createElement('div');
+            cost.style.marginTop = '6px';
+            cost.innerText = s.cost === 0 ? 'Free' : s.cost + ' coins';
+            const btn = document.createElement('button');
+            btn.className = 'btn';
+            btn.style.marginTop = '8px';
+            if (ownedSkins.includes(s.id)) {
+                btn.innerText = selectedSkin === s.id ? 'Equipped' : 'Equip';
+                btn.onclick = () => { selectedSkin = s.id; localStorage.setItem('sodaSelectedSkin', selectedSkin); renderShopList(); };
+            } else {
+                btn.innerText = 'Buy';
+                btn.onclick = () => {
+                    if (coins >= s.cost) {
+                        coins -= s.cost;
+                        ownedSkins.push(s.id);
+                        selectedSkin = s.id;
+                        localStorage.setItem('sodaCoins', String(coins));
+                        localStorage.setItem('sodaOwnedSkins', JSON.stringify(ownedSkins));
+                        localStorage.setItem('sodaSelectedSkin', selectedSkin);
+                        renderShopList();
+                        updateUI();
+                        // 立即切換球外觀
+                        if (typeof createBall === 'function') createBall();
+                    } else {
+                        alert('Not enough coins');
+                    }
+                };
+            }
+            card.appendChild(preview);
+            card.appendChild(title);
+            card.appendChild(cost);
+            card.appendChild(btn);
+            container.appendChild(card);
+        });
+    }
+
+    function startFlickerThenJumpscare() {
+        if (window._flickerActive) return;
+        window._flickerActive = true;
+        initAudio();
+
+        const targets = [];
+        stallLightGroups.forEach(stall => {
+            if (!stall.lightBulbs) return;
+            stall.lightBulbs.forEach(b => {
+                if (b.light) targets.push({ light: b.light, orig: b.light.intensity || 1 });
+            });
+        });
+
+        lanterns.forEach(l => {
+            const pl = l.group.children.find(ch => ch.isPointLight);
+            if (pl) targets.push({ light: pl, orig: pl.intensity || 1 });
+        });
+
+        // include ambient and directional lights for a broader flicker
+        scene.children.forEach(c => {
+            if ((c.isAmbientLight || c.isDirectionalLight) && typeof c.intensity === 'number') {
+                targets.push({ light: c, orig: c.intensity });
+            }
+        });
+
+        const duration = 1200;
+        const intervalMs = 80;
+        const steps = Math.max(1, Math.floor(duration / intervalMs));
+        let step = 0;
+        const bodyOrigBg = document.body.style.backgroundColor;
+
+        const interval = setInterval(() => {
+            step++;
+            const blackout = Math.random() < 0.18 + (step / steps) * 0.3;
+            targets.forEach(t => {
+                if (blackout) t.light.intensity = 0;
+                else t.light.intensity = Math.max(0, t.orig * (0.2 + Math.random() * 1.6));
+            });
+
+            if (Math.random() < 0.08) {
+                document.body.style.backgroundColor = '#ffffff';
+                setTimeout(() => { document.body.style.backgroundColor = bodyOrigBg; }, 60);
+            }
+
+            if (step >= steps) {
+                clearInterval(interval);
+                targets.forEach(t => { t.light.intensity = t.orig; });
+                window._flickerActive = false;
+                setTimeout(() => triggerJumpscare(), 300);
+            }
+        }, intervalMs);
+    }
+
     function triggerJumpscare() {
         const jumpscareEl = document.getElementById('jumpscare');
         jumpscareEl.style.display = 'flex';
@@ -476,6 +812,32 @@
             stall.position.set(x, 2, z);
             scene.add(stall);
             backgroundAssets.push(stall);
+
+            // hanging christmas bulbs along the front of the roof
+            const bulbs = [];
+            const bulbCount = 6;
+            for (let i = 0; i < bulbCount; i++) {
+                const bx = -3 + (i * (6 / (bulbCount-1)));
+                const string = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.4, 6), new THREE.MeshStandardMaterial({ color: 0x111111 }));
+                string.position.set(bx, 2.1, 2.35);
+                stall.add(string);
+
+                // colorful glowing bulb + matching point light
+                const hue = Math.random();
+                const col = new THREE.Color().setHSL(hue, 0.95, 0.55);
+                const bulbMat = new THREE.MeshStandardMaterial({ color: col.clone().multiplyScalar(0.6), emissive: col, emissiveIntensity: 1.6, roughness: 0.25, metalness: 0.05 });
+                const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 12), bulbMat);
+                bulb.position.set(bx, 1.85, 2.35);
+                stall.add(bulb);
+
+                const pl = new THREE.PointLight(col.getHex(), 1.0, 6, 2);
+                pl.position.copy(bulb.position);
+                stall.add(pl);
+
+                bulbs.push({ bulb, light: pl });
+            }
+            stall.lightBulbs = bulbs;
+            stallLightGroups.push(stall);
         };
         createStall(-15, -5, theme.accent);
         createStall(15, -8, theme.light);
@@ -531,6 +893,112 @@
         createLantern(12, 11, 8, true);
         createLantern(-22, 9, 2);
         createLantern(22, 9, 2);
+    }
+
+    function createBunting(theme) {
+        // create balanced triangular pennants on the left and right edges only
+        const group = new THREE.Group();
+        const colors = [ new THREE.Color(theme.accent).getHex(), new THREE.Color(theme.light).getHex(), 0xffdd33 ];
+        const sideRanges = [[-22, -6], [6, 22]]; // left and right ranges to avoid center lanterns
+        const stringCount = 3;
+        const pennantsPerString = 9;
+
+        sideRanges.forEach((range, sideIdx) => {
+            const [startX, endX] = range;
+            for (let s = 0; s < stringCount; s++) {
+                const baseY = 9 + s * 0.6;
+                const z = -7 - sideIdx * 1.2 - s * 0.2;
+
+                const stringPoints = [];
+                for (let i = 0; i <= pennantsPerString; i++) {
+                    const u = i / pennantsPerString;
+                    const x = startX + (endX - startX) * u;
+                    const sag = Math.sin(u * Math.PI) * (0.8 + s * 0.2);
+                    const y = baseY - sag;
+                    stringPoints.push(new THREE.Vector3(x, y + 0.04, z));
+                }
+                const stringGeom = new THREE.BufferGeometry().setFromPoints(stringPoints);
+                const stringMat = new THREE.LineBasicMaterial({ color: 0x222222, linewidth: 1, transparent: true, opacity: 0.6 });
+                const stringLine = new THREE.Line(stringGeom, stringMat);
+                group.add(stringLine);
+
+                for (let i = 0; i < pennantsPerString; i++) {
+                    const u = i / (pennantsPerString - 1);
+                    const x = startX + (endX - startX) * u;
+                    const sag = Math.sin(u * Math.PI) * (0.8 + s * 0.2);
+                    const y = baseY - sag - 0.06;
+                    const w = 0.9; const h = 0.6;
+                    const geom = new THREE.BufferGeometry();
+                    const vertices = new Float32Array([
+                        -w/2, 0, 0,
+                        w/2, 0, 0,
+                        0, h, 0
+                    ]);
+                    geom.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+                    geom.computeVertexNormals();
+                    const color = colors[(i + s + sideIdx) % colors.length];
+                    const mat = new THREE.MeshStandardMaterial({ color: color, side: THREE.DoubleSide, roughness: 0.6, metalness: 0.02 });
+                    const pennant = new THREE.Mesh(geom, mat);
+                    pennant.position.set(x, y, z - 0.01);
+                    pennant.rotation.z = (Math.sin((i + s + sideIdx) * 0.6) * 0.12) * (sideIdx === 0 ? -1 : 1);
+                    pennant.castShadow = false;
+                    group.add(pennant);
+                }
+            }
+        });
+
+        scene.add(group);
+        backgroundAssets.push(group);
+    }
+
+    function createCenterStreetLights(theme) {
+        // Place two street lanterns on the ground behind the play area (not on the tables),
+        // and ensure they're rendered after lanterns so they remain visible.
+        const group = new THREE.Group();
+        const xs = [-4, 4];
+        const poleHeight = 6.0;
+        // place behind the front table, but in the background area
+        const z = -4.0;
+
+        xs.forEach((x, idx) => {
+            const lampGroup = new THREE.Group();
+            lampGroup.position.set(x, 0, z);
+
+            const pole = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.06, 0.06, poleHeight, 8),
+                new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.6 })
+            );
+            pole.position.set(0, poleHeight / 2 + 0.05, 0);
+            pole.castShadow = true;
+            lampGroup.add(pole);
+
+            const arm = new THREE.Mesh(
+                new THREE.BoxGeometry(0.5, 0.06, 0.06),
+                new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.5 })
+            );
+            arm.position.set(idx === 0 ? -0.25 : 0.25, poleHeight / 2 - 0.25, 0);
+            arm.rotation.z = idx === 0 ? 0.18 : -0.18;
+            lampGroup.add(arm);
+
+            const head = new THREE.Mesh(
+                new THREE.SphereGeometry(0.32, 12, 12),
+                new THREE.MeshStandardMaterial({ color: theme.lantern, emissive: theme.lantern, emissiveIntensity: 1.6, roughness: 0.2 })
+            );
+            head.position.set(idx === 0 ? -0.55 : 0.55, poleHeight / 2 - 0.25, 0);
+            lampGroup.add(head);
+
+            const pl = new THREE.PointLight(theme.lantern, 1.6, 18, 2);
+            pl.position.set(head.position.x, head.position.y, head.position.z - 0.05);
+            lampGroup.add(pl);
+
+            // ensure lampGroup renders after lanterns so it's not occluded visually
+            lampGroup.renderOrder = 1000;
+
+            group.add(lampGroup);
+        });
+
+        scene.add(group);
+        backgroundAssets.push(group);
     }
 
     function generateCanTexture() {
@@ -637,14 +1105,13 @@
         physicsCans = []; visualCans = [];
         if (visualBall) scene.remove(visualBall);
         if (physicsBall) world.remove(physicsBall);
-        if (num === 1) baseBalls = 6;
-        else if (num <= 10) baseBalls += 2;
-        ballsRemaining = baseBalls;
         score = 0;
         const currentTheme = themes[(num - 1) % themes.length];
         createEnvironment(currentTheme);
         createMarketStalls(currentTheme);
         createLanterns(currentTheme);
+        createCenterStreetLights(currentTheme);
+        createBunting(currentTheme);
         const tableTop = TABLE_HEIGHT + (TABLE_THICKNESS / 2);
         const baseY = tableTop + (CAN_HEIGHT / 2);
         const hGap = CAN_RADIUS * 2.1; 
@@ -655,22 +1122,44 @@
             const cansInThisRow = pyramidRows - row;
             const yPos = baseY + (row * vGap);
             const rowOffset = ((cansInThisRow - 1) * hGap) / 2;
+            // determine heavy can indices for bottom row when level >=5
+            let heavyIndices = [];
+            if (num >= 5 && row === 0) {
+                let heavyCount = 2; // default for level 5-6
+                if (num >= 7) heavyCount = 3; // level 7+ use 3 heavy cans
+                const center = Math.floor(cansInThisRow / 2);
+                if (heavyCount === 2) heavyIndices = [center - 1, center + 1];
+                else if (heavyCount === 3) heavyIndices = [center - 1, center, center + 1];
+                // clamp indices to valid range
+                heavyIndices = heavyIndices.filter(idx => idx >= 0 && idx < cansInThisRow);
+            }
             for (let i = 0; i < cansInThisRow; i++) {
                 const xPos = (i * hGap) - rowOffset;
-                createCan(xPos, yPos, -2);
+                if (heavyIndices.includes(i)) {
+                    createCan(xPos, yPos, -2, { heavy: true, mass: CAN_MASS * 4 });
+                } else {
+                    createCan(xPos, yPos, -2);
+                }
                 totalCansInPyramid++;
             }
         }
         targetScore = totalCansInPyramid;
+        // make the number of balls equal to the number of cans for this level
+        baseBalls = totalCansInPyramid;
+        ballsRemaining = baseBalls;
         document.getElementById('level-num').innerText = num;
         document.getElementById('target').innerText = targetScore;
         updateUI();
         createBall();
     }
 
-    function createCan(x, y, z) {
-        const body = new CANNON.Body({ mass: CAN_MASS, material: canMaterial, type: CANNON.Body.KINEMATIC });
-        body.addShape(new CANNON.Cylinder(CAN_RADIUS, CAN_RADIUS, CAN_HEIGHT, 16));
+    function createCan(x, y, z, opts = {}) {
+        const mass = typeof opts.mass === 'number' ? opts.mass : CAN_MASS;
+        const body = new CANNON.Body({ mass: mass, material: canMaterial, type: CANNON.Body.KINEMATIC });
+        // allow heavier cans to behave a little bulkier visually
+        const radius = opts.radius || CAN_RADIUS;
+        const height = opts.height || CAN_HEIGHT;
+        body.addShape(new CANNON.Cylinder(radius, radius, height, 16));
         body.position.set(x, y, z);
         body.allowSleep = true;
         body.sleepSpeedLimit = 0.1;
@@ -682,11 +1171,20 @@
             }
         });
         world.addBody(body);
-        const mesh = new THREE.Mesh(new THREE.CylinderGeometry(CAN_RADIUS, CAN_RADIUS, CAN_HEIGHT, 16), new THREE.MeshStandardMaterial({ map: generateCanTexture() }));
+
+        // visual: tint heavy cans darker and slightly larger
+        let materialOptions = {};
+        if (opts.heavy) {
+            materialOptions = { color: 0x333333, roughness: 0.35, metalness: 0.25, map: generateCanTexture() };
+        } else {
+            materialOptions = { map: generateCanTexture() };
+        }
+        const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, height, 16), new THREE.MeshStandardMaterial(materialOptions));
+        if (opts.heavy) mesh.scale.set(1.05, 1.05, 1.05);
         mesh.castShadow = true;
         mesh.receiveShadow = true;
         scene.add(mesh);
-        physicsCans.push({ body, isCounted: false, isDisappearing: false, timeOnFloor: 0 });
+        physicsCans.push({ body, isCounted: false, isDisappearing: false, timeOnFloor: 0, isHeavy: !!opts.heavy });
         visualCans.push(mesh);
     }
 
@@ -712,7 +1210,91 @@
         physicsBall.position.set(0, ballY, 11);
         physicsBall.linearDamping = 0.1; 
         world.addBody(physicsBall);
-        visualBall = new THREE.Mesh(new THREE.SphereGeometry(BALL_RADIUS, 16, 16), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.1 }));
+        // 根據皮膚設計繪製球
+        const skin = skins.find(s => s.id === selectedSkin) || skins[0];
+        const canvas = document.createElement('canvas');
+        canvas.width = 128; canvas.height = 128;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#' + skin.color.toString(16).padStart(6, '0');
+        ctx.beginPath();
+        ctx.arc(64,64,60,0,2*Math.PI);
+        ctx.fill();
+        // 棒球
+        if(skin.design === 'baseball') {
+            ctx.strokeStyle = '#d32f2f';
+            ctx.lineWidth = 5;
+            for(let i=0;i<2;i++){
+                ctx.beginPath();
+                ctx.ellipse(64,64,48,56, i*Math.PI, 0, Math.PI);
+                ctx.stroke();
+                for(let j=0;j<9;j++){
+                    let t = Math.PI*j/8;
+                    let x = 64 + (i===0?1:-1)*48*Math.cos(t);
+                    let y = 64 - 56*Math.sin(t);
+                    ctx.save();
+                    ctx.translate(x,y);
+                    ctx.rotate((i===0?1:-1)*Math.PI/6);
+                    ctx.beginPath();
+                    ctx.moveTo(-6,0);ctx.lineTo(6,0);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            }
+        } else if(skin.design === 'stripe') {
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 6;
+            ctx.beginPath();
+            ctx.arc(64,64,36,Math.PI/4,Math.PI*1.25);
+            ctx.stroke();
+        } else if(skin.design === 'star') {
+            ctx.fillStyle = '#fff';
+            for(let i=0;i<5;i++){
+                ctx.save();
+                ctx.translate(64,64);
+                ctx.rotate(i*2*Math.PI/5);
+                ctx.beginPath();
+                ctx.moveTo(0,-28);
+                for(let j=0;j<5;j++){
+                    ctx.lineTo(28*Math.sin((j*2+1)*Math.PI/5),-28*Math.cos((j*2+1)*Math.PI/5));
+                }
+                ctx.closePath();
+                ctx.globalAlpha = 0.18;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+                ctx.restore();
+            }
+        } else if(skin.design === 'smile') {
+            ctx.strokeStyle = '#222';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.arc(64,80,20,Math.PI*0.15,Math.PI*0.85);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(54,60,5,0,2*Math.PI);
+            ctx.arc(74,60,5,0,2*Math.PI);
+            ctx.fillStyle = '#222';
+            ctx.fill();
+        } else if(skin.design === 'lightning') {
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 7;
+            ctx.beginPath();
+            ctx.moveTo(40,40); ctx.lineTo(88,64); ctx.lineTo(64,64); ctx.lineTo(96,104);
+            ctx.stroke();
+        } else if(skin.design === 'heart') {
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.moveTo(64,80);
+            ctx.bezierCurveTo(64,68,40,68,40,80);
+            ctx.bezierCurveTo(40,104,64,112,64,128);
+            ctx.bezierCurveTo(64,112,88,104,88,80);
+            ctx.bezierCurveTo(88,68,64,68,64,80);
+            ctx.closePath();
+            ctx.globalAlpha = 0.18;
+            ctx.fill();
+            ctx.globalAlpha = 1;
+        }
+        let ballMat = new THREE.MeshStandardMaterial({ map: new THREE.CanvasTexture(canvas), roughness: 0.1 });
+        visualBall = new THREE.Mesh(new THREE.SphereGeometry(BALL_RADIUS, 16, 16), ballMat);
         visualBall.castShadow = true;
         scene.add(visualBall);
         ballReady = true;
@@ -801,14 +1383,20 @@
 
     function checkGameOver() {
         if (ballsRemaining <= 0 && !levelWon && score < targetScore) {
+            if (isGameOver) return;
             isGameOver = true;
-            triggerJumpscare();
+            startFlickerThenJumpscare();
         }
     }
 
-    function showOverlay(title, desc, isFail = false, stars = 0) {
+    // 顯示星星時也顯示本關獲得金幣
+    function showOverlay(title, desc, isFail = false, stars = 0, coinsEarned = null) {
         document.getElementById('msg-title').innerText = title;
-        document.getElementById('msg-desc').innerText = desc;
+        let msg = desc;
+        if (coinsEarned !== null && !isFail) {
+            msg += `<br><span style="color:#ffd700;font-size:1.2em;">+${coinsEarned} COINS</span>`;
+        }
+        document.getElementById('msg-desc').innerHTML = msg;
         const starBox = document.getElementById('star-rating');
         starBox.innerHTML = '';
         if (stars > 0) {
@@ -827,6 +1415,7 @@
     function updateUI() {
         document.getElementById('score').innerText = score;
         document.getElementById('balls-left').innerText = `BALLS: ${ballsRemaining}`;
+        document.getElementById('coins-left').innerText = `COINS: ${coins}`;
     }
 
     function onResize() {
@@ -847,6 +1436,20 @@
             l.group.rotation.x = Math.cos(time * 0.8 + l.baseRotation) * 0.03; 
             const pulse = 1.0 + Math.sin(time * 2 + l.offset) * 0.2;
             l.body.material.emissiveIntensity = pulse;
+        });
+
+        // animate hanging stall lights
+        stallLightGroups.forEach((stall, si) => {
+            if (!stall.lightBulbs) return;
+            stall.lightBulbs.forEach((b, i) => {
+                const flick = 0.5 + Math.abs(Math.sin(time * (1.2 + i*0.15) + si + i)) * 1.2;
+                b.light.intensity = Math.min(2.0, flick);
+                // gentle color cycling for variety
+                const hue = (0.02 + (i * 0.08) + Math.sin(time * 0.7 + i) * 0.03) % 1;
+                const col = new THREE.Color().setHSL(hue, 0.9, 0.55);
+                b.bulb.material.emissive = col;
+                b.bulb.material.emissiveIntensity = Math.min(1.8, flick);
+            });
         });
 
         if (visualBall && physicsBall) { 
@@ -880,8 +1483,10 @@
                 if (!canObj.isCounted) {
                     canObj.isCounted = true;
                     score++;
-                    currentBallKnockdowns++; 
-                    updateUI();
+                        currentBallKnockdowns++;
+                        // award points and coins per can knocked down
+                        addPoints(1);
+                        updateUI();
                     if (score >= targetScore && !levelWon && !isGameOver) {
                         levelWon = true;
                         const used = baseBalls - ballsRemaining;
@@ -890,7 +1495,9 @@
                         if (used <= 2) stars = 3;
                         else if (used <= 4) stars = 2;
                         
-                        setTimeout(() => showOverlay("LEVEL CLEAR!", "Great job!", false, stars), 500);
+                        // 計算本關獲得金幣
+                        let coinsEarned = Math.floor(points / 3) - Math.floor((points - targetScore) / 3);
+                        setTimeout(() => showOverlay("LEVEL CLEAR!", "Great job!", false, stars, coinsEarned), 500);
                     }
                 }
                 canObj.timeOnFloor += 1/60;
