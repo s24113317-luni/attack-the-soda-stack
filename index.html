@@ -299,8 +299,7 @@
     <div class="menu-box" style="max-width:640px; width:90%; display:flex; flex-direction:column; max-height:90vh; overflow-y:auto;">
         <h2>Shop</h2>
         <div id="shop-list" style="display:flex; gap:12px; flex-wrap:wrap; justify-content:center; margin-top:12px;"></div>
-        <h3 style="margin:24px 0 8px 0; color:#ffd700;">Skill Market</h3>
-        <div id="skill-list" style="display:flex; gap:12px; flex-wrap:wrap; justify-content:center; margin-bottom:8px; width:100%; max-width:100vw;"></div>
+        <!-- Skill Market removed, ball shop remains -->
 
         <div style="display:flex; gap:12px; justify-content:center; margin-top:18px;">
             <button class="btn secondary" onclick="closeShop()">Close</button>
@@ -541,7 +540,6 @@
 
     function openShop() {
         renderShopList();
-        renderSkillList();
         document.getElementById('shop-modal').style.display = 'flex';
     }
     // 技能商店渲染
